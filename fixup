@@ -1,0 +1,16 @@
+#!/bin/bash
+#
+#   Rename to cjs/mjs after tsc build
+#
+mv dist/cjs/index.js dist/cjs/index.cjs
+mv dist/mjs/index.js dist/mjs/index.mjs
+
+#for f in dist/cjs/*.js ; do
+#    base=${f/.js/}
+#    [ -f ${base}.js ] && mv ${base}.js ${base}.cjs
+#done
+#
+#for f in ./dist/mjs/*.js ; do
+#    base=${f/.js/}
+#    [ -f ${base}.js ] && mv ${base}.js ${base}.mjs
+#done
