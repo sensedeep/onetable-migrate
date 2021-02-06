@@ -5,7 +5,7 @@
 
 ![OneTable](https://www.sensedeep.com/images/ring.png)
 
-This library provides migrations support for [DynamoDB OneTable](https://github.com/sensedeep/dynamodb-onetable).
+This library provides migrations support for [DynamoDB OneTable](https://www.npmjs.com/package/dynamodb-onetable).
 
 The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely.
 
