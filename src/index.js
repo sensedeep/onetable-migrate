@@ -7,9 +7,6 @@ import Path from 'path'
 import Semver from 'semver'
 import { Model, Table } from 'dynamodb-onetable'
 
-// import OneTable from 'dynamodb-onetable'
-// const { Model, Table } = OneTable
-
 const SemVerExp = /^([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+)?$/
 
 const MigrationFields = {
@@ -24,6 +21,7 @@ const MigrationFields = {
 export default class Migrate {
 
     constructor(db, params = {}) {
+        this.params = params
         this.db = db
         this.migrations = params.migrations
         this.dir = Path.resolve(params.dir || '.')

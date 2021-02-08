@@ -1,6 +1,6 @@
 {
     "name": "onetable-migrate",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "DynamoDB OneTable Migration Library",
     "type": "module",
     "exports": {
