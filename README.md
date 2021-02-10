@@ -7,7 +7,7 @@
 
 This library provides migrations support for [DynamoDB OneTable](https://www.npmjs.com/package/dynamodb-onetable).
 
-The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely.
+The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely. The OneTable migration library was used in production by the [SenseDeep Serverless Troubleshooter](https://www.sensedeep.com/) for all DynamoDB access for a year before it was published as an NPM module.
 
 Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which utilizes this library if you want command control of migrations.
 
