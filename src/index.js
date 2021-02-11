@@ -124,20 +124,4 @@ export default class Migrate {
         }
         return versions.slice(0, limit)
     }
-
-    async readJson(path) {
-        return new Promise(function(resolve, reject) {
-            Fs.readFile(path, function(err, data) {
-                if (err) {
-                    reject(err)
-                } else {
-                    try {
-                        resolve(Json5.parse(data))
-                    } catch (err) {
-                        throw new Error(`Cannot parse json file: ${path}. ${err.message}`)
-                    }
-                }
-            })
-        })
-    }
 }
