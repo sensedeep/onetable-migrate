@@ -38,6 +38,13 @@ import {Table} from 'dynamodb-onetable'
 import Migrate from 'onetable-migrate'
 ```
 
+or
+
+```javascript
+const {Table} = require('dynamodb-onetable')
+const Migrate = require('onetable-migrate')
+```
+
 Initialize the Migrate instance with a OneTable Table instance.
 
 ```javascript
