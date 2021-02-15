@@ -52,10 +52,10 @@ export default class Migrate {
             migration.version = version
         }
         if (direction < 0) {
-            await migration.task.down(this.db, this)
+            await migration.down(this.db, this)
             await this.Migration.remove({version: migration.version})
         } else {
-            await migration.task.up(this.db, this)
+            await migration.up(this.db, this)
             let params = {
                 version,
                 date: new Date(),
@@ -99,17 +99,17 @@ export default class Migrate {
     async loadMigration(version) {
         let path, task
         if (this.migrations) {
-            let migration = this.migrations.find(m => m.version == version)
-            task = migration.task
+            task = this.migrations.find(m => m.version == version)
         } else {
             path = `${this.dir}/${version}.js`
             task = (await import(path)).default
         }
         return {
+            version,
             description: task.description,
             path: path || 'memory',
-            version,
-            task,
+            up: task.up,
+            down: task.down,
         }
     }
 

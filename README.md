@@ -1,4 +1,5 @@
 # DynamoDB OneTable Migration Library
+One table to rule them all.
 
 [![npm](https://img.shields.io/npm/v/onetable-migrate.svg)](https://www.npmjs.com/package/onetable-migrate)
 [![npm](https://img.shields.io/npm/l/onetable-migrate.svg)](https://www.npmjs.com/package/onetable-migrate)
@@ -7,9 +8,11 @@
 
 This library provides migrations support for [DynamoDB OneTable](https://www.npmjs.com/package/dynamodb-onetable).
 
-The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely. The OneTable migration library was used in production by the [SenseDeep Serverless Troubleshooter](https://www.sensedeep.com/) for all DynamoDB access for a year before it was published as an NPM module.
+The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely.
 
-Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which utilizes this library if you want command control of migrations.
+The OneTable migration library was used in production by the [SenseDeep Serverless Troubleshooter](https://www.sensedeep.com/) for all DynamoDB access for a year before it was published as an NPM module.
+
+Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies on this library if you want command control of migrations. The CLI can operate locally or remotely if this library is hosted via Lambda.
 
 ## OneTable Migration Features
 
@@ -112,7 +115,6 @@ import Migrate from 'onetable-migrate'
 
 //  See above example for Migrate parameters
 const migrate = new Migrate()
-await migrate.init()
 
 //  Apply a specific migration where direction is -1 for downgrade, +1 for an upgrade and 0 for a reset
 let migration = await migrate.apply(direction, '0.0.1')
@@ -159,11 +161,117 @@ The migrations array contains entries of the form:
 
 The `version` should be a [SemVer](https://semver.org/) compatible version. The `up` and `down` functions receive the OneTable Table instance via the `db` parameter. The `migrate` parameter is the Migrate instance.
 
+### Migrate Methods
+
+#### async apply(direction, version)
+
+Apply or revert a migration. The `direction` parameter specifies the direction, where, -1 means downgrade, 0 means reset and then upgrade, and 1 means upgrade.
+
+The `version` is the destination version. All intermediate migrations will be applied or reverted to reach the destination.
+
+#### async findPastMigrations()
+
+Returns a list of all migrations that have been applied (and not reverted). The result is a simple list of version numbers.
+
+#### async getCurrentVersion()
+
+Returns the current migration version. This is the last migration that was not reverted.
+
+#### async getOutstandingVersions()
+
+Returns a list of migrations that have not yet been applied.
+
+### Deployment
+
+You use deploy this library two ways:
+
+* Local Migrations via the [OneTable CLI](https://www.npmjs.com/package/onetable-cli).
+* Remote Migrations hosted via Lambda and remotely controlled via the OneTable CLI.
+
+### Local Migrations
+
+With local migrations, you keep your migration scripts locally on a development system and manage using the [OneTable CLI](https://www.npmjs.com/package/onetable-cli). The OneTable CLI includes this migration library internally and can manage migrations using AWS credentials.
+
+In this mode, DynamoDB I/O is performed from within the OneTable CLI process. This means I/O travels to and from the system hosting the OneTable CLI process. This works well for local development databases and smaller remote databases.
+
+### Remote Migrations
+
+If you have large databases or complex migrations, you should host the OneTable Migrate library via AWS Lambda so that it executes in the same AWS region and availablity zone as your DynamoDB instance. This will accelerate migrations by minimizing the I/O transfer time.
+
+The OneTable CLI can control your migration lambda when operating in proxy mode by setting the `arn` of your migration Lambda.
+
+#### Lambda Hosting
+
+When hosted remotely, a Lambda function receives proxied commands from the OneTable CLI and relays to the OneTable Migrate library API.
+
+The OneTable CLI should be configured with the ARN of the Lambda function in the migrate.json `arn` property. Access should be controlled via suitable IAM access credentials that are passed to the OneTable CLI via the command line or via the migrate.json `aws` properties. See [OneTable CLI](https://www.npmjs.com/package/onetable-cli) for more details.
+
+Here is a sample Lambda hosting of OneTable Migrate:
+
+```javascript
+import {Table} from 'dynamodb-onetable'
+import Migrate from 'onetable-migrate'
+import DynamoDB from 'aws-sdk/clients/dynamodb'
+
+const Migrations = [
+    {
+        version: '0.0.1',
+        description: 'Initialize the database',
+        async up(db, migrate) {
+            await db.create('Status', {})
+        },
+        async down(db, migrate) {
+            await db.remove('Status', {})
+        }
+    }
+]
+
+/*
+    The OneTable CLI issues
+    event.action = ['apply', 'getCurrentVersion', 'findPastMigrations', 'getOutstandingVersions'].
+    The apply() action expects event.args.direction and event.args.version.
+    The event.config will contain your migrate.json and schema.
+ */
+exports.handler = async (event, context) => {
+
+    let {action, args, config} = event
+
+    let cot = config.onetable
+    cot.client = new DynamoDB.DocumentClient()
+    let onetable = new Table(cot)
+
+    cot.migrations = Migrations
+    let migrate = new Migrate(onetable, cot)
+    let data
+
+    switch (action) {
+    case 'apply':
+        let {direction, version} = args
+        data = await migrate.apply(direction, version)
+        break
+    case 'getCurrentVersion':
+        data = await migrate.getCurrentVersion()
+        break
+    case 'findPastMigrations':
+        data = await migrate.findPastMigrations()
+        break
+    case 'getOutstandingVersions':
+        data = await migrate.getOutstandingVersions()
+        break
+    default:
+        throw new Error(`Unknown migration action ${action}`)
+    }
+    return {
+        body: data,
+        statusCode: 200,
+    }
+}
+```
 
 ### References
 
-- [OneTable](https://github.com/sensedeep/dynamodb-onetable).
-- [OneTable CLI](https://github.com/sensedeep/onetable-cli).
+- [OneTable](https://www.npmjs.com/package/dynamodb-onetable).
+- [OneTable CLI](https://www.npmjs.com/package/onetable-cli).
 - [DocumentClient SDK Reference](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB/DocumentClient.html).
 
 ### Participate
