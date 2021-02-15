@@ -217,25 +217,13 @@ const Migrations = [
     {
         version: '0.0.1',
         description: 'Initialize the database',
-        async up(db, migrate) {
-            await db.create('Status', {})
-        },
-        async down(db, migrate) {
-            await db.remove('Status', {})
-        }
+        async up(db, migrate) { /* code */ },
+        async down(db, migrate) { /* code */ }
     }
 ]
 
-/*
-    The OneTable CLI issues
-    event.action = ['apply', 'getCurrentVersion', 'findPastMigrations', 'getOutstandingVersions'].
-    The apply() action expects event.args.direction and event.args.version.
-    The event.config will contain your migrate.json and schema.
- */
 exports.handler = async (event, context) => {
-
     let {action, args, config} = event
-
     let cot = config.onetable
     cot.client = new DynamoDB.DocumentClient()
     let onetable = new Table(cot)
@@ -267,6 +255,17 @@ exports.handler = async (event, context) => {
     }
 }
 ```
+
+The OneTable CLI will issue the following commands and set `event.action` to the method name and `event.args` to any parameters. The `event.config` contains the migrate.json settings from the CLI.
+
+```
+function apply(direction: Number, version: String) : Migration {}
+function getCurrentVersion() : String {}
+function findPastMigrations() {}
+function getOutstandingVersions(): String {}
+```
+
+Where a `Migration` is {version, description, path}.
 
 ### References
 
