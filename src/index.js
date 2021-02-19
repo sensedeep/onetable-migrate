@@ -87,10 +87,11 @@ export default class Migrate {
         if (this.migrations) {
             versions = this.migrations.map(m => m.version)
         } else {
-            versions = Fs.readdirSync(this.dir).map(file => file.replace(/\.[^/.]+$/, '')).filter(version => {
-                return Semver.valid(version) && Semver.compare(version, current) > 0
-            }).sort(Semver.compare)
+            versions = Fs.readdirSync(this.dir).map(file => file.replace(/\.[^/.]+$/, ''))
         }
+        versions = versions.filter(version => {
+            return Semver.valid(version) && Semver.compare(version, current) > 0
+        }).sort(Semver.compare)
         versions = versions.filter(v => pastMigrations.find(m => m.version == v) == null)
         return versions.slice(0, limit)
     }
@@ -103,6 +104,9 @@ export default class Migrate {
         } else {
             path = `${this.dir}/${version}.js`
             task = (await import(path)).default
+        }
+        if (!task) {
+            throw new Error(`Cannot find migration for version ${version}`)
         }
         return {
             version,

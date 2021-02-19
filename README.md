@@ -25,6 +25,7 @@ Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies o
 * Show outstanding migrations.
 * Stored history of migrations.
 * No module dependencies other than OneTable.
+* Works with AWS SDK v3
 
 ## Installation
 
@@ -48,7 +49,9 @@ const {Table} = require('dynamodb-onetable')
 const Migrate = require('onetable-migrate')
 ```
 
-Initialize the Migrate instance with a OneTable Table instance.
+Initialize the Migrate instance with a OneTable Table instance using the AWS SDK v2 DocumentClient.
+
+For initialization using the AWS SDK v3, see the [OneTable Documentation](https://www.npmjs.com/package/dynamodb-onetable).
 
 ```javascript
 const table = new Table({
@@ -60,7 +63,7 @@ const migrate = new Migrate(onetable, params)
 await migrate.init()
 ```
 
-See the [OneTable documentation](https://github.com/sensedeep/dynamodb-onetable/README.md) for details of the Table constructor and other OneTable configuration parameters.
+See the [OneTable documentation](https://www.npmjs.com/package/dynamodb-onetable) for details of the Table constructor and other OneTable configuration parameters.
 
 The Migrate `params` provides a list of migrations as either:
 
@@ -143,7 +146,7 @@ The `params` property may contain either:
 * `dir` path property describing a directory containing migration files.
 * `migrations` array containing maps that describe each migration.
 
-The migrations array contains entries of the form:
+The migrations array contains an ordered set of migrations of the form:
 
 ```javascript
 {
@@ -159,7 +162,9 @@ The migrations array contains entries of the form:
 }
 ```
 
-The `version` should be a [SemVer](https://semver.org/) compatible version. The `up` and `down` functions receive the OneTable Table instance via the `db` parameter. The `migrate` parameter is the Migrate instance.
+The `version` should be a [SemVer](https://semver.org/) compatible version. The `up` and `down` functions receive the OneTable Table instance via the `db` parameter. The `migrate` parameter is the Migrate instance. You can access the parameters provided to onetable-migrate via `migrate.params`.
+
+You can create a special `latest` migration that is used for the `migrate reset` command. The version field should be set to `latest`. The latest migration should remove all data from the database and then initialize the database equivalent to applying all migrations. The `migrate reset` is a quick way to get a development database up to the latest version.
 
 ### Migrate Methods
 
