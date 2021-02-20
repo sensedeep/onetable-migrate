@@ -164,7 +164,45 @@ The migrations array contains an ordered set of migrations of the form:
 
 The `version` should be a [SemVer](https://semver.org/) compatible version. The `up` and `down` functions receive the OneTable Table instance via the `db` parameter. The `migrate` parameter is the Migrate instance. You can access the parameters provided to onetable-migrate via `migrate.params`.
 
-You can create a special `latest` migration that is used for the `migrate reset` command. The version field should be set to `latest`. The latest migration should remove all data from the database and then initialize the database equivalent to applying all migrations. The `migrate reset` is a quick way to get a development database up to the latest version.
+## Latest Migration
+
+You can create a special `latest` migration that is used for the `migrate reset` command which is is a quick way to get a development database up to the current version. For the `latest` migration, the version field should be set to `latest`.
+
+The latest migration should remove all data from the database and then initialize the database equivalent to applying all migrations.
+
+When creating your `latest.js` migration, be very careful when removing all items from the database. We typically protect this with a test against the deployment profile to ensure you never do this on a production database.
+
+Sample latest.js migration
+```javascript
+const migrate = new Migrate(onetable, {
+    migrations: [
+        {
+            version: 'latest',
+            description: 'Database reset to latest version',
+            async up(db, migrate) {
+                if (migrate.params.profile != 'prod') {
+                    await removeAllItems(db)
+                }
+                //  Provision required database data
+            },
+            async down(db, migrate) {
+                if (migrate.params.profile != 'prod') {
+                    await removeAllItems(db)
+                }
+            },
+        }
+    ]
+})
+
+async function removeAllItems(db) {
+    do {
+        items = await db.scanItems({}, {limit: 100})
+        for (let item of items) {
+            await db.deleteItem(item)
+        }
+    } while (items.length)
+}
+```
 
 ### Migrate Methods
 
@@ -224,7 +262,14 @@ const Migrations = [
         description: 'Initialize the database',
         async up(db, migrate) { /* code */ },
         async down(db, migrate) { /* code */ }
-    }
+    },
+    {
+        version: 'latest',
+        description: 'Initialize the database',
+        async up(db, migrate) { /* code */ },
+        async down(db, migrate) { /* code */ }
+    },
+
 ]
 
 exports.handler = async (event, context) => {
