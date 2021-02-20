@@ -180,13 +180,13 @@ const migrate = new Migrate(onetable, {
             version: 'latest',
             description: 'Database reset to latest version',
             async up(db, migrate) {
-                if (migrate.params.profile != 'prod') {
+                if (migrate.params.profile == 'dev') {
                     await removeAllItems(db)
                 }
                 //  Provision required database data
             },
             async down(db, migrate) {
-                if (migrate.params.profile != 'prod') {
+                if (migrate.params.profile == 'dev') {
                     await removeAllItems(db)
                 }
             },
