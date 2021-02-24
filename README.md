@@ -54,13 +54,35 @@ Initialize the Migrate instance with a OneTable Table instance using the AWS SDK
 For initialization using the AWS SDK v3, see the [OneTable Documentation](https://www.npmjs.com/package/dynamodb-onetable).
 
 ```javascript
-const table = new Table({
-    client: new AWS.DynamoDB.DocumentClient(params),
+//  Sample Schema
+const MySchema = {
+    indexes: {
+        primary: {
+            hash: 'pk',
+            sort: 'sk',
+        },
+    },
+    models: {
+        User: {
+            pk:     { value: 'user:${id}' },
+            sk:     { value: 'user:' },
+            id:     { type: String },
+            name:   { type: String },
+            email:  { type: String },
+        }
+    }
+}
+
+//  Construct the dynamodb-onetable Table entity
+
+const onetable = new Table({
+    client: new AWS.DynamoDB.DocumentClient({}),
     name: 'MyTable',
     schema: MySchema,
 })
+
+//  Construct the Migrate instance
 const migrate = new Migrate(onetable, params)
-await migrate.init()
 ```
 
 See the [OneTable documentation](https://www.npmjs.com/package/dynamodb-onetable) for details of the Table constructor and other OneTable configuration parameters.
@@ -110,6 +132,8 @@ export default {
     }
 }
 ```
+
+If `params` is not provided, it defaults to looking for migrations in the current directory. i.e. params of `{dir: '.'}`.
 
 ### Migrate Examples
 

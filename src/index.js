@@ -16,7 +16,7 @@ const MigrationFields = {
     version:        { type: String, required: true },
 }
 
-export default class Migrate {
+export class Migrate {
 
     /*
         params: {
