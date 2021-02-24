@@ -39,14 +39,14 @@ Import the library:
 
 ```javascript
 import {Table} from 'dynamodb-onetable'
-import Migrate from 'onetable-migrate'
+import {Migrate} from 'onetable-migrate'
 ```
 
 or
 
 ```javascript
 const {Table} = require('dynamodb-onetable')
-const Migrate = require('onetable-migrate')
+const {Migrate} = require('onetable-migrate')
 ```
 
 Initialize the Migrate instance with a OneTable Table instance using the AWS SDK v2 DocumentClient.
@@ -138,7 +138,7 @@ If `params` is not provided, it defaults to looking for migrations in the curren
 ### Migrate Examples
 
 ```javascript
-import Migrate from 'onetable-migrate'
+import {Migrate} from 'onetable-migrate'
 
 //  See above example for Migrate parameters
 const migrate = new Migrate()
@@ -277,7 +277,7 @@ Here is a sample Lambda hosting of OneTable Migrate:
 
 ```javascript
 import {Table} from 'dynamodb-onetable'
-import Migrate from 'onetable-migrate'
+import {Migrate} from 'onetable-migrate'
 import DynamoDB from 'aws-sdk/clients/dynamodb'
 
 const Migrations = [
