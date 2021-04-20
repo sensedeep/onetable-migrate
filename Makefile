@@ -5,3 +5,5 @@ build:
 
 publish: build
 	npm publish
+
+promote: publish
