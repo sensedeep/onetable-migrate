@@ -8,8 +8,8 @@ import Semver from 'semver'
 import { Model, Table } from 'dynamodb-onetable'
 
 const MigrationFields = {
-    pk:             { value: '_migrations:' },
-    sk:             { value: '_migrations:${version}' },
+    pk:             { type: String, value: '_migrations:' },
+    sk:             { type: String, value: '_migrations:${version}' },
     description:    { type: String, required: true },
     date:           { type: Date, required: true },
     path:           { type: String, required: true },
