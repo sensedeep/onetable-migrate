@@ -37,7 +37,7 @@
     },
     "homepage": "https://github.com/sensedeep/onetable-migrate",
     "dependencies": {
-        "dynamodb-onetable": "^1.5.2",
+        "dynamodb-onetable": "^1.5.6",
         "semver": "^5.7.1"
     },
     "devDependencies": {
