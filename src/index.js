@@ -44,7 +44,7 @@ export class Migrate {
         let migration
         if (direction == 0) {
             await this.Migration.remove({}, {many: true})
-    
+
             //  Create prior migration items
             let versions = await this.getVersions()
             for (let v of versions) {
@@ -61,9 +61,7 @@ export class Migrate {
                 await this.Migration.create(params)
             }
         } else {
-            let migration = await this.loadMigration(version)
-            migration.version = version
-
+            migration = await this.loadMigration(version)
             if (direction < 0) {
                 await migration.down(this.db, this)
                 await this.Migration.remove({version: migration.version})
