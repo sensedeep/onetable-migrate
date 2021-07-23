@@ -41,28 +41,42 @@ export class Migrate {
 
     /* public */
     async apply(direction, version) {
-        let migration = await this.loadMigration(version)
+        let migration
         if (direction == 0) {
-            let outstanding = await this.getOutstandingVersions()
-            if (outstanding.length) {
-                version = outstanding[outstanding.length - 1]
-            } else {
-                version = await this.getCurrentVersion()
+            await this.Migration.remove({}, {many: true})
+    
+            //  Create prior migration items
+            let versions = await this.getVersions()
+            for (let v of versions) {
+                migration = await this.loadMigration(v)
+                let params = {
+                    version: v,
+                    date: new Date(),
+                    path: migration.path,
+                    description: migration.description,
+                }
+                if (v == version) {
+                    await migration.up(this.db, this)
+                }
+                await this.Migration.create(params)
             }
-            migration.version = version
-        }
-        if (direction < 0) {
-            await migration.down(this.db, this)
-            await this.Migration.remove({version: migration.version})
         } else {
-            await migration.up(this.db, this)
-            let params = {
-                version,
-                date: new Date(),
-                path: migration.path,
-                description: migration.description,
+            let migration = await this.loadMigration(version)
+            migration.version = version
+
+            if (direction < 0) {
+                await migration.down(this.db, this)
+                await this.Migration.remove({version: migration.version})
+            } else {
+                await migration.up(this.db, this)
+                let params = {
+                    version,
+                    date: new Date(),
+                    path: migration.path,
+                    description: migration.description,
+                }
+                await this.Migration.create(params)
             }
-            await this.Migration.create(params)
         }
         return migration
     }
@@ -83,17 +97,24 @@ export class Migrate {
     async getOutstandingVersions(limit = Number.MAX_SAFE_INTEGER) {
         let current = await this.getCurrentVersion()
         let pastMigrations = await this.findPastMigrations()
+        let versions = await this.getVersions()
+        versions = versions.filter(version => {
+            return Semver.compare(version, current) > 0
+        }).sort(Semver.compare)
+        versions = versions.filter(v => pastMigrations.find(m => m.version == v) == null)
+        return versions.slice(0, limit)
+    }
+
+    /* private */
+    async getVersions() {
         let versions
         if (this.migrations) {
             versions = this.migrations.map(m => m.version)
         } else {
             versions = Fs.readdirSync(this.dir).map(file => file.replace(/\.[^/.]+$/, ''))
         }
-        versions = versions.filter(version => {
-            return Semver.valid(version) && Semver.compare(version, current) > 0
-        }).sort(Semver.compare)
-        versions = versions.filter(v => pastMigrations.find(m => m.version == v) == null)
-        return versions.slice(0, limit)
+        versions = versions.filter(version => { return Semver.valid(version) }).sort(Semver.compare)
+        return versions
     }
 
     /* private */
