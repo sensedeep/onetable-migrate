@@ -66,6 +66,7 @@ export class Migrate {
                 await migration.down(this.db, this)
                 await this.Migration.remove({version: migration.version})
             } else {
+                //  Repeat and up
                 await migration.up(this.db, this)
                 let params = {
                     version,
@@ -73,7 +74,11 @@ export class Migrate {
                     path: migration.path,
                     description: migration.description,
                 }
-                await this.Migration.create(params)
+                if (direction == 1) {
+                    await this.Migration.create(params)
+                } else {
+                    await this.Migration.update(params)
+                }
             }
         }
         return migration
