@@ -5,8 +5,8 @@
 import Fs from 'fs'
 import Path from 'path'
 import Semver from 'semver'
-// import { Model, Table } from 'dynamodb-onetable'
-import { Model, Table } from '../../onetable/dist/mjs/index.js'
+import { Model, Table } from 'dynamodb-onetable'
+// import { Model, Table } from '../../onetable/dist/mjs/index.js'
 
 //  Cache of key and delimiter information per table
 const TableCache = {}
