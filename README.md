@@ -24,6 +24,7 @@ Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies o
 * Show database status and list applied migrations.
 * Show outstanding migrations.
 * Stored history of migrations.
+* Persist migration history and the current OneTable schema in the table.
 * No module dependencies other than OneTable.
 * Works with AWS SDK v3
 
@@ -75,13 +76,10 @@ const MySchema = {
 
 //  Construct the dynamodb-onetable Table entity
 
-const onetable = new Table({
+const OneTableParams = {
     client: new AWS.DynamoDB.DocumentClient({}),
     name: 'MyTable',
-    schema: MySchema,
 })
-
-//  Construct the Migrate instance
 const migrate = new Migrate(onetable, params)
 ```
 
@@ -100,6 +98,7 @@ const migrate = new Migrate(onetable, {
         {
             version: '0.0.1',
             description: 'Initialize the database',
+            schema: Schema,
             async up(db, migrate) {
                 await db.create('Status', {})
             },
@@ -114,7 +113,7 @@ const migrate = new Migrate(onetable, {
 or provide migrations via a directory:
 
 ```javascript
-const migrate = new Migrate(onetable, {dir: '.'})
+const migrate = new Migrate(OneTableParams, {dir: '.'})
 ```
 
 where the migrations look like:
@@ -122,6 +121,8 @@ where the migrations look like:
 ```javascript
 export default {
     description: 'Test dummy migration only',
+    version: '0.0.1',
+    schema: Schema,
 
     async up(db, migrate) {
         await db.create('Status', {})
@@ -141,7 +142,7 @@ If `params` is not provided, it defaults to looking for migrations in the curren
 import {Migrate} from 'onetable-migrate'
 
 //  See above example for Migrate parameters
-const migrate = new Migrate()
+const migrate = new Migrate(OneTableParams, {dir: '.'})
 
 //  Apply a specific migration where direction is -1 for downgrade, +1 for an upgrade and 0 for a reset
 let migration = await migrate.apply(direction, '0.0.1')
@@ -156,13 +157,19 @@ let version = await migrate.getCurrentVersion()
 let outstanding = await migrate.getOutstandingVersions()
 ```
 
+Migrations will save a history of migrations and the current OneTable schema after each migration.
+
+The Migration history will be saved as items using the `_Migration` model using the `_migrations:` primary hash key value. NOTE: the `:` delimiter is always used regardless of the OneTable delimiter setting.
+
+The Schema will be saved as a single item using the `_Schema` model using the `_schema` primary hash key value.
+
 ### Migrate Constructor
 
-The Table constructor takes a parameter of type `object` with the following properties:
+The Migrate constructor takes the following parameters:
 
 | Property | Type | Description |
 | -------- | :--: | ----------- |
-| db | `Table` | A OneTable Table instance [OneTable](https://github.com/sensedeep/dynamodb-onetable) |
+| config | `Table\|map` | A OneTable Table instance [OneTable](https://github.com/sensedeep/dynamodb-onetable) or a map of OneTable properties.|
 | params | `map` | Hash containing `migrations` or `dir` properties |
 
 The `params` property may contain either:
@@ -176,6 +183,8 @@ The migrations array contains an ordered set of migrations of the form:
 {
     version: 'x.y.z',
     description: 'Migration Description',
+    schema: Schema,
+
     async up(db, migrate) {
         //  Code to upgrade the database
     },
@@ -188,6 +197,8 @@ The migrations array contains an ordered set of migrations of the form:
 
 The `version` should be a [SemVer](https://semver.org/) compatible version. The `up` and `down` functions receive the OneTable Table instance via the `db` parameter. The `migrate` parameter is the Migrate instance. You can access the parameters provided to onetable-migrate via `migrate.params`.
 
+Each migration must reference the `Schema` that applies to that version of the database. The Migrate library saves the current schema to the database so that tooling and always understand the stored data. The migration must specify a `version` property.
+
 ## Latest Migration
 
 You can create a special `latest` migration that is used for the `migrate reset` command which is is a quick way to get a development database up to the current version. For the `latest` migration, the version field should be set to `latest`.
@@ -198,11 +209,12 @@ When creating your `latest.js` migration, be very careful when removing all item
 
 Sample latest.js migration
 ```javascript
-const migrate = new Migrate(onetable, {
+const migrate = new Migrate(OneTableParams, {
     migrations: [
         {
             version: 'latest',
             description: 'Database reset to latest version',
+            schema: Schema,
             async up(db, migrate) {
                 if (migrate.params.profile == 'dev') {
                     await removeAllItems(db)
@@ -242,9 +254,13 @@ Returns a list of all migrations that have been applied (and not reverted). The 
 
 #### async getCurrentVersion()
 
-Returns the current migration version. This is the last migration that was not reverted.
+Returns the current migration version. This is the last migration that was applied and has not been reverted.
 
 #### async getOutstandingVersions()
+
+Returns a list of versions that have not yet been applied.
+
+#### async getOutstandingMigrations()
 
 Returns a list of migrations that have not yet been applied.
 
@@ -284,26 +300,27 @@ const Migrations = [
     {
         version: '0.0.1',
         description: 'Initialize the database',
+        schema: Schema_001,
         async up(db, migrate) { /* code */ },
         async down(db, migrate) { /* code */ }
     },
     {
         version: 'latest',
         description: 'Initialize the database',
+        schema: Schema_002,
         async up(db, migrate) { /* code */ },
         async down(db, migrate) { /* code */ }
     },
 
 ]
 
+let client = new DynamoDB.DocumentClient()
+
 exports.handler = async (event, context) => {
     let {action, args, config} = event
-    let cot = config.onetable
-    cot.client = new DynamoDB.DocumentClient()
-    let onetable = new Table(cot)
 
-    cot.migrations = Migrations
-    let migrate = new Migrate(onetable, cot)
+    config.client = client
+    let migrate = new Migrate(config, {migrations: Migrations})
     let data
 
     switch (action) {
@@ -320,6 +337,9 @@ exports.handler = async (event, context) => {
     case 'getOutstandingVersions':
         data = await migrate.getOutstandingVersions()
         break
+    case 'getOutstandingMigrations':
+        data = await migrate.getOutstandingMigrations()
+        break
     default:
         throw new Error(`Unknown migration action ${action}`)
     }
@@ -329,6 +349,16 @@ exports.handler = async (event, context) => {
     }
 }
 ```
+
+You will need to install this controller with the following lambda permissions:
+
+- "dynamodb:Query"
+- "dynamodb:Scan"
+- "dynamodb:GetItem"
+- "dynamodb:PutItem"
+- "dynamodb:UpdateItem"
+- "dynamodb:DeleteItem"
+- "dynamodb:DescribeTable"
 
 The OneTable CLI will issue the following commands and set `event.action` to the method name and `event.args` to any parameters. The `event.config` contains the migrate.json settings from the CLI.
 

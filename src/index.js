@@ -5,83 +5,148 @@
 import Fs from 'fs'
 import Path from 'path'
 import Semver from 'semver'
-import { Model, Table } from 'dynamodb-onetable'
+// import { Model, Table } from 'dynamodb-onetable'
+import { Model, Table } from '../../onetable/dist/mjs/index.js'
 
-const MigrationFields = {
-    pk:             { type: String, value: '_migrations:' },
-    sk:             { type: String, value: '_migrations:${version}' },
-    description:    { type: String, required: true },
-    date:           { type: Date, required: true },
-    path:           { type: String, required: true },
-    version:        { type: String, required: true },
-}
+//  Cache of key and delimiter information per table
+const TableCache = {}
 
 export class Migrate {
-
     /*
-        params: {
-            migrations: [in-memory-migrations]
-            dir: 'migrations-directory'
-        }
+        Construct the Migrate instance.
+        The `config` parameter is either instance of Table() or params for Table.
+        The `params.migrations` set to the in-memory migrations or `params.dir` to a migrations directory.
      */
-    constructor(db, params = {}) {
+    constructor(config = {}, params = {}) {
         this.params = params
-        this.db = db
         this.migrations = params.migrations
         this.dir = Path.resolve(params.dir || '.')
-        this.Migration = new Model(db, '_Migration', { fields: MigrationFields }, {timestamps: false})
+        this.db = (typeof config.setClient != 'function') ? new Table(config) : config
     }
 
-    /* public */
-    async findPastMigrations() {
-        let pastMigrations = await this.Migration.find()
-        this.sortMigrations(pastMigrations)
-        return pastMigrations
+    async getTableInfo() {
+        let db = this.db
+        let info = TableCache[db.name]
+        if (info && info.updated > (Date.now() - 60 * 1000)) {
+            return info
+        }
+        let data = await db.describeTable()
+        info = {}
+        for (let key of data.Table.KeySchema) {
+            let type = key.KeyType.toLowerCase() == 'hash' ? 'hash' : 'sort'
+            info[type] = key.AttributeName
+        }
+        if (!info.sort) {
+            throw new Error('Cannot use Migrate library on a table without a sort/range key')
+        }
+        info.updated = Date.now()
+        TableCache[db.name] = info
+        return info
+    }
+
+    async updateSchema(info) {
+        let db = this.db
+        let schema = await db.readSchema()
+        if (schema) {
+            db.setSchema(schema)
+        }
+    }
+
+    async createMigrationModel() {
+        let info = await this.getTableInfo()
+
+        //  Read the schema and update the Table() params
+        await this.updateSchema()
+
+        //  Delimiter here is hard coded because of of cases where the schema.params is empty
+        let delimiter = ':'
+        let fields = {
+            [info.hash]: { type: String, value: `_migrations${delimiter}` },
+            [info.sort]: { type: String, value: `_migrations${delimiter}\${version}` },
+            description: { type: String, required: true },
+            date:        { type: Date,   required: true },
+            path:        { type: String, required: true },
+            version:     { type: String, required: true },
+        }
+        return new Model(this.db, '_Migration', {fields, timestamps: false, delimiter})
+    }
+
+    /*
+        Invoke a migration. Method is up or down.
+        This will set the schema if the migration defines one and will persist the schema to the table after the migration.
+    */
+    async invoke(migration, method) {
+        let db = this.db
+        if (migration.schema) {
+            db.setSchema(migration.schema)
+        }
+        await migration[method](db, this)
+
+        if (method == 'down') {
+            let current = await this.loadMigration(await this.getCurrentVersion())
+            if (current.schema || migration.schema) {
+                await db.saveSchema(current.schema || migration.schema)
+            }
+        } else if (migration.schema) {
+            db.saveSchema(migration.schema)
+        }
     }
 
     /* public */
     async apply(direction, version) {
+        let db = this.db
+        console.log('APPLY', direction, version)
+        let Migration = await this.createMigrationModel()
         let migration
         if (direction == 0) {
-            await this.Migration.remove({}, {many: true})
+            //  Reset to zero
+            await Migration.remove({}, {many: true})
 
             //  Create prior migration items
             let versions = await this.getVersions()
+            version = versions.pop()
+
             for (let v of versions) {
                 migration = await this.loadMigration(v)
-                let params = {
+                await Migration.create({
                     version: v,
                     date: new Date(),
                     path: migration.path,
                     description: migration.description,
-                }
-                if (v == version) {
-                    await migration.up(this.db, this)
-                }
-                await this.Migration.create(params)
+                })
             }
+        }
+
+        migration = await this.loadMigration(version)
+        if (direction < 0) {
+            await this.invoke(migration, 'down')
+            await Migration.remove({version: migration.version})
+
         } else {
-            migration = await this.loadMigration(version)
-            if (direction < 0) {
-                await migration.down(this.db, this)
-                await this.Migration.remove({version: migration.version})
+            //  Up, repeat or reset
+            await this.invoke(migration, 'up')
+            let params = {
+                version,
+                date: new Date(),
+                path: migration.path,
+                description: migration.description,
+            }
+            if (direction <= 1) {
+                await Migration.create(params)
             } else {
-                //  Repeat and up
-                await migration.up(this.db, this)
-                let params = {
-                    version,
-                    date: new Date(),
-                    path: migration.path,
-                    description: migration.description,
-                }
-                if (direction == 1) {
-                    await this.Migration.create(params)
-                } else {
-                    await this.Migration.update(params)
-                }
+                await Migration.update(params)
             }
         }
         return migration
+    }
+
+    /* public */
+    async findPastMigrations() {
+        let Migration = await this.createMigrationModel()
+        //MOB log
+        let pastMigrations = await Migration.find({}, {log: true})
+        this.sortMigrations(pastMigrations)
+        return pastMigrations
     }
 
     /* public */
@@ -100,12 +165,27 @@ export class Migrate {
     async getOutstandingVersions(limit = Number.MAX_SAFE_INTEGER) {
         let current = await this.getCurrentVersion()
         let pastMigrations = await this.findPastMigrations()
+
         let versions = await this.getVersions()
         versions = versions.filter(version => {
             return Semver.compare(version, current) > 0
         }).sort(Semver.compare)
+
         versions = versions.filter(v => pastMigrations.find(m => m.version == v) == null)
         return versions.slice(0, limit)
+    }
+
+    /*
+        Return outstanding migrations in semver sorted order up to the specified limit
+     */
+    /* public */
+    async getOutstandingMigrations(limit = Number.MAX_SAFE_INTEGER) {
+        let versions = await this.getOutstandingVersions(limit)
+        let migrations = []
+        for (let v of versions) {
+            migrations.push(await this.loadMigration(v))
+        }
+        return migrations
     }
 
     /* private */
@@ -116,8 +196,7 @@ export class Migrate {
         } else {
             versions = Fs.readdirSync(this.dir).map(file => file.replace(/\.[^/.]+$/, ''))
         }
-        versions = versions.filter(version => { return Semver.valid(version) }).sort(Semver.compare)
-        return versions
+        return versions.filter(version => { return Semver.valid(version) }).sort(Semver.compare)
     }
 
     /* private */
@@ -132,10 +211,17 @@ export class Migrate {
         if (!task) {
             throw new Error(`Cannot find migration for version ${version}`)
         }
+        if (!task.schema) {
+            throw new Error(`Migration ${version} is missing a schema`)
+        }
+        if (!task.version) {
+            throw new Error(`Migration ${version} is missing a version property`)
+        }
         return {
             version,
             description: task.description,
             path: path || 'memory',
+            schema: task.schema,
             up: task.up,
             down: task.down,
         }
