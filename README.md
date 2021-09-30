@@ -134,6 +134,8 @@ export default {
 }
 ```
 
+Note: migrations must now have a version and schema properties. The schema is the OneTable schema that applies at this version.
+
 If `params` is not provided, it defaults to looking for migrations in the current directory. i.e. params of `{dir: '.'}`.
 
 ### Migrate Examples
