@@ -6,6 +6,8 @@ import Fs from 'fs'
 import Path from 'path'
 import Semver from 'semver'
 import { Model, Table } from 'dynamodb-onetable'
+
+// DEV
 // import { Model, Table } from '../../onetable/dist/mjs/index.js'
 
 //  Cache of key and delimiter information per table
@@ -44,31 +46,15 @@ export class Migrate {
         return info
     }
 
-    async updateSchema(info) {
+    async getModel() {
         let db = this.db
+        let info = await this.getTableInfo()
+        //  Read the schema to update the Table() params
         let schema = await db.readSchema()
         if (schema) {
             db.setSchema(schema)
         }
-    }
-
-    async createMigrationModel() {
-        let info = await this.getTableInfo()
-
-        //  Read the schema and update the Table() params
-        await this.updateSchema()
-
-        //  Delimiter here is hard coded because of of cases where the schema.params is empty
-        let delimiter = ':'
-        let fields = {
-            [info.hash]: { type: String, value: `_migrations${delimiter}` },
-            [info.sort]: { type: String, value: `_migrations${delimiter}\${version}` },
-            description: { type: String, required: true },
-            date:        { type: Date,   required: true },
-            path:        { type: String, required: true },
-            version:     { type: String, required: true },
-        }
-        return new Model(this.db, '_Migration', {fields, timestamps: false, delimiter})
+        return this.db.getModel('_Migration')
     }
 
     /*
@@ -95,8 +81,7 @@ export class Migrate {
     /* public */
     async apply(direction, version) {
         let db = this.db
-        console.log('APPLY', direction, version)
-        let Migration = await this.createMigrationModel()
+        let Migration = await this.getModel()
         let migration
         if (direction == 0) {
             //  Reset to zero
@@ -142,8 +127,7 @@ export class Migrate {
 
     /* public */
     async findPastMigrations() {
-        let Migration = await this.createMigrationModel()
-        //MOB log
+        let Migration = await this.getModel()
         let pastMigrations = await Migration.find({}, {log: true})
         this.sortMigrations(pastMigrations)
         return pastMigrations
