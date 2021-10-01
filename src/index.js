@@ -128,7 +128,7 @@ export class Migrate {
     /* public */
     async findPastMigrations() {
         let Migration = await this.getModel()
-        let pastMigrations = await Migration.find({}, {log: true})
+        let pastMigrations = await Migration.find({})
         this.sortMigrations(pastMigrations)
         return pastMigrations
     }
