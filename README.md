@@ -1,10 +1,11 @@
+![OneTable](https://www.sensedeep.com/images/ring-short.png?renew)
+
+*One Table to Rule Them All*
+
 # DynamoDB OneTable Migration Library
-One table to rule them all.
 
 [![npm](https://img.shields.io/npm/v/onetable-migrate.svg)](https://www.npmjs.com/package/onetable-migrate)
 [![npm](https://img.shields.io/npm/l/onetable-migrate.svg)](https://www.npmjs.com/package/onetable-migrate)
-
-![OneTable](https://www.sensedeep.com/images/ring.png)
 
 This library provides migrations support for [DynamoDB OneTable](https://www.npmjs.com/package/dynamodb-onetable).
 
