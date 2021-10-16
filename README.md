@@ -10,9 +10,13 @@ This library provides migrations support for [DynamoDB OneTable](https://www.npm
 
 The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely.
 
-The OneTable migration library was used in production by the [SenseDeep Serverless Troubleshooter](https://www.sensedeep.com/) for all DynamoDB access for a year before it was published as an NPM module.
+The OneTable migration library was used in production by the [SenseDeep Serverless Developer Studio](https://www.sensedeep.com/) for all DynamoDB access for a year before it was published as an NPM module.
 
 Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies on this library if you want command control of migrations. The CLI can operate locally or remotely if this library is hosted via Lambda.
+
+Use the [OneTable Controller](https://github.com/sensedeep/onetable-controller) sample which provides a server side sample hosting of this library for executing migrations in the cloud.
+
+Use the [SenseDeep DynamoDB Developer Studio](https://www.sensedeep.com) which provides a complete DynamoDB developer environment with a powerful data browser, single-table designer, provisioning planner, table metrics and control of database migrations.
 
 ## OneTable Migration Features
 
@@ -25,8 +29,9 @@ Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies o
 * Show outstanding migrations.
 * Stored history of migrations.
 * Persist migration history and the current OneTable schema in the table.
+* Control by the SenseDeep DynamoDB Developer Studio GUI.
 * No module dependencies other than OneTable.
-* Works with AWS SDK v3
+* Works with AWS SDK v2 and v3
 
 ## Installation
 
@@ -80,7 +85,7 @@ const OneTableParams = {
     client: new AWS.DynamoDB.DocumentClient({}),
     name: 'MyTable',
 })
-const migrate = new Migrate(onetable, params)
+const migrate = new Migrate(OneTableParams, params)
 ```
 
 See the [OneTable documentation](https://www.npmjs.com/package/dynamodb-onetable) for details of the Table constructor and other OneTable configuration parameters.
@@ -93,7 +98,7 @@ The Migrate `params` provides a list of migrations as either:
 For example:
 
 ```javascript
-const migrate = new Migrate(onetable, {
+const migrate = new Migrate(OneTableParams, {
     migrations: [
         {
             version: '0.0.1',
@@ -282,6 +287,8 @@ In this mode, DynamoDB I/O is performed from within the OneTable CLI process. Th
 ### Remote Migrations
 
 If you have large databases or complex migrations, you should host the OneTable Migrate library via AWS Lambda so that it executes in the same AWS region and availablity zone as your DynamoDB instance. This will accelerate migrations by minimizing the I/O transfer time.
+
+The [OneTable Controller](https://github.com/sensedeep/onetable-controller) sample is an self-contained sample hosting of this library for executing migrations in the cloud. It uses the serverless framework to create a Lambda proxy that responds to CLI and SenseDeep migration commands.
 
 The OneTable CLI can control your migration lambda when operating in proxy mode by setting the `arn` of your migration Lambda.
 
