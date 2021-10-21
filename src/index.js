@@ -10,8 +10,7 @@ import { Model, Table } from 'dynamodb-onetable'
 // DEV
 // import { Model, Table } from '../../onetable/dist/mjs/index.js'
 
-//  Cache of key and delimiter information per table
-const TableCache = {}
+const MigrationKey = '_Migration'
 
 export class Migrate {
     /*
@@ -26,90 +25,60 @@ export class Migrate {
         this.db = (typeof config.setClient != 'function') ? new Table(config) : config
     }
 
-    async getTableInfo() {
-        let db = this.db
-        let info = TableCache[db.name]
-        if (info && info.updated > (Date.now() - 60 * 1000)) {
-            return info
-        }
-        let data = await db.describeTable()
-        info = {}
-        for (let key of data.Table.KeySchema) {
-            let type = key.KeyType.toLowerCase() == 'hash' ? 'hash' : 'sort'
-            info[type] = key.AttributeName
-        }
-        if (!info.sort) {
-            throw new Error('Cannot use Migrate library on a table without a sort/range key')
-        }
-        info.updated = Date.now()
-        TableCache[db.name] = info
-        return info
-    }
-
-    async getModel() {
-        let db = this.db
-        let info = await this.getTableInfo()
-        //  Read the schema to update the Table() params
-        let schema = await db.readSchema()
-        if (schema) {
-            db.setSchema(schema)
-        }
-        return this.db.getModel('_Migration')
-    }
-
     /*
-        Invoke a migration. Method is up or down.
-        This will set the schema if the migration defines one and will persist the schema to the table after the migration.
+        Initialize and define standard models: Schema, Migration
     */
-    async invoke(migration, method) {
-        let db = this.db
-        if (migration.schema) {
-            db.setSchema(migration.schema)
-        }
-        await migration[method](db, this)
-
-        if (method == 'down') {
-            let current = await this.loadMigration(await this.getCurrentVersion())
-            if (current.schema || migration.schema) {
-                await db.saveSchema(current.schema || migration.schema)
-            }
-        } else if (migration.schema) {
-            db.saveSchema(migration.schema)
-        }
+    async init() {
+        await this.db.setSchema()
     }
 
     /* public */
     async apply(direction, version) {
         let db = this.db
-        let Migration = await this.getModel()
-        let migration
-        if (direction == 0) {
-            //  Reset to zero
-            await Migration.remove({}, {many: true})
+        let migration, model
 
-            //  Create prior migration items
+        console.log(`Apply migration ${version} direction ${direction}`)
+
+        if (direction == 0) {
+            migration = await this.loadMigration('latest')
+            model = db.getModel(MigrationKey)
+
+            //  Remove all existing migrations
+            await model.remove({}, {many: true})
+
+            //  Create prior migration items (not last)
             let versions = await this.getVersions()
             version = versions.pop()
 
             for (let v of versions) {
-                migration = await this.loadMigration(v)
-                await Migration.create({
-                    version: v,
+                let migration = await this.loadMigration(v)
+                model = db.getModel(MigrationKey)
+                await model.create({
                     date: new Date(),
-                    path: migration.path,
                     description: migration.description,
+                    path: migration.path,
+                    version: migration.version,
                 })
             }
         }
+        if (!migration) {
+            migration = await this.loadMigration(version)
+            model = db.getModel(MigrationKey)
+        }
 
-        migration = await this.loadMigration(version)
         if (direction < 0) {
-            await this.invoke(migration, 'down')
-            await Migration.remove({version: migration.version})
+            await migration.down(db, this)
+
+            await model.remove({version: migration.version})
+
+            let current = await this.loadMigration(await this.getCurrentVersion())
+            await db.saveSchema(current.schema)
 
         } else {
             //  Up, repeat or reset
-            await this.invoke(migration, 'up')
+            await migration.up(db, this)
+            db.saveSchema(migration.schema)
+
             let params = {
                 version,
                 date: new Date(),
@@ -117,18 +86,17 @@ export class Migrate {
                 description: migration.description,
             }
             if (direction <= 1) {
-                await Migration.create(params)
+                await model.create(params)
             } else {
-                await Migration.update(params)
+                await model.update(params)
             }
         }
-        return migration
     }
 
     /* public */
     async findPastMigrations() {
-        let Migration = await this.getModel()
-        let pastMigrations = await Migration.find({})
+        let model = await this.db.getModel(MigrationKey)
+        let pastMigrations = await model.find({})
         this.sortMigrations(pastMigrations)
         return pastMigrations
     }
@@ -184,30 +152,35 @@ export class Migrate {
     }
 
     /* private */
+    /*
+        Load a migration and set its schema. Return the migration (modified)
+    */
     async loadMigration(version) {
-        let path, task
+        let path, migration
         if (this.migrations) {
-            task = this.migrations.find(m => m.version == version)
+            migration = this.migrations.find(m => m.version == version)
         } else {
             path = `${this.dir}/${version}.js`
-            task = (await import(path)).default
+            migration = (await import(path)).default
         }
-        if (!task) {
+        if (!migration) {
             throw new Error(`Cannot find migration for version ${version}`)
         }
-        if (!task.schema) {
+        if (!migration.schema) {
             throw new Error(`Migration ${version} is missing a schema`)
         }
-        if (!task.version) {
+        if (!migration.version) {
             throw new Error(`Migration ${version} is missing a version property`)
         }
+        await this.db.setSchema(migration.schema)
+
         return {
-            version,
-            description: task.description,
+            description: migration.description,
+            down: migration.down,
             path: path || 'memory',
-            schema: task.schema,
-            up: task.up,
-            down: task.down,
+            schema: migration.schema,
+            up: migration.up,
+            version,
         }
     }
 
