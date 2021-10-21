@@ -114,12 +114,14 @@ const migrate = new Migrate(OneTableParams, {
         }
     ]
 })
+await migrate.init()
 ```
 
 or provide migrations via a directory:
 
 ```javascript
 const migrate = new Migrate(OneTableParams, {dir: '.'})
+await migrate.init()
 ```
 
 where the migrations look like:
@@ -271,6 +273,10 @@ Returns a list of versions that have not yet been applied.
 #### async getOutstandingMigrations()
 
 Returns a list of migrations that have not yet been applied.
+
+### async init()
+
+Initialize the migration library. This reads the table keys.
 
 ### Deployment
 
