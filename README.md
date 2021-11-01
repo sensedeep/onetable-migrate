@@ -9,15 +9,15 @@
 
 This library provides migrations support for [DynamoDB OneTable](https://www.npmjs.com/package/dynamodb-onetable).
 
-The library may be used by services to apply and control migrations to OneTable DynamodDB tables either locally or remotely.
+OneTable migrations can be executed locally for simple tasks, however it is best to host your migrations close to the DynamoDB table for maximum performance. When executing locally, the migration scripts reside on your local computer and DynamoDB operations are performed from your system. When executing remotely, the migration scripts reside in your AWS account region and DynamoDB operations are performed there, in close proximity to the DynamoDB table.
 
-The OneTable migration library was used in production by the [SenseDeep Serverless Developer Studio](https://www.sensedeep.com/) for all DynamoDB access for a year before it was published as an NPM module.
+You should generally host this library and migrations to execute in the same AWS region and availability zone as your DynamoDB table. This will accelerate migrations by minimizing the I/O transfer time.
 
-Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies on this library if you want command control of migrations. The CLI can operate locally or remotely if this library is hosted via Lambda.
+The easiest way to remotely host this library is by deploying the [OneTable Controller](https://github.com/sensedeep/onetable-controller/blob/main/README.md) which is an easy to deploy, complete solution for remote hosting.
 
-Use the [OneTable Controller](https://github.com/sensedeep/onetable-controller) sample which provides a server side sample hosting of this library for executing migrations in the cloud.
+Use the [OneTable CLI](https://github.com/sensedeep/onetable-cli) which relies on this library if you want command control of migrations.
 
-Use the [SenseDeep DynamoDB Developer Studio](https://www.sensedeep.com) which provides a complete DynamoDB developer environment with a powerful data browser, single-table designer, provisioning planner, table metrics and control of database migrations.
+Use the [SenseDeep DynamoDB Developer Studio](https://www.sensedeep.com) which provides a complete DynamoDB developer studio with a powerful data browser, single-table designer, provisioning planner, table metrics and control of database migrations.
 
 ## OneTable Migration Features
 
@@ -32,6 +32,7 @@ Use the [SenseDeep DynamoDB Developer Studio](https://www.sensedeep.com) which p
 * Persist migration history and the current OneTable schema in the table.
 * Control by the SenseDeep DynamoDB Developer Studio GUI.
 * No module dependencies other than OneTable.
+* Supported by [SenseDeep](https://www.sensedeep.com/) for graphical migrations control.
 * Works with AWS SDK v2 and v3
 
 ## Installation
