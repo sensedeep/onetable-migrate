@@ -339,6 +339,8 @@ const Migrations = [
 ]
 
 let client = new DynamoDB.DocumentClient()
+// if using aws-sdk v3 the client needs to be wrapped in the Dynamo class
+// let client = new Dynamo({ client: new DynamoDBClient({}) });
 
 exports.handler = async (event, context) => {
     let {action, args, config} = event
