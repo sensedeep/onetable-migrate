@@ -62,32 +62,12 @@ Initialize the Migrate instance with a OneTable Table instance using the AWS SDK
 For initialization using the AWS SDK v3, see the [OneTable Documentation](https://www.npmjs.com/package/dynamodb-onetable).
 
 ```javascript
-//  Sample Schema
-const MySchema = {
-    indexes: {
-        primary: {
-            hash: 'pk',
-            sort: 'sk',
-        },
-    },
-    models: {
-        User: {
-            pk:     { value: 'user:${id}' },
-            sk:     { value: 'user:' },
-            id:     { type: String },
-            name:   { type: String },
-            email:  { type: String },
-        }
-    }
-}
-
-//  Construct the dynamodb-onetable Table entity
-
 const OneTableParams = {
     client: new AWS.DynamoDB.DocumentClient({}),
     name: 'MyTable',
 })
 const migrate = new Migrate(OneTableParams, params)
+await migrate.init()
 ```
 
 See the [OneTable documentation](https://www.npmjs.com/package/dynamodb-onetable) for details of the Table constructor and other OneTable configuration parameters.
@@ -106,11 +86,19 @@ const migrate = new Migrate(OneTableParams, {
             version: '0.0.1',
             description: 'Initialize the database',
             schema: Schema,
-            async up(db, migrate) {
-                await db.create('Status', {})
+            async up(db, migrate, params) {
+                if (!params.dry) {
+                    await db.create('Status', {})
+                } else {
+                    console.log('DRY: create "Status"')
+                }
             },
-            async down(db, migrate) {
-                await db.remove('Status', {})
+            async down(db, migrate, params) {
+                if (!params.dry) {
+                    await db.remove('Status', {})
+                } else {
+                    console.log('DRY: create "Status"')
+                }
             }
         }
     ]
@@ -133,12 +121,16 @@ export default {
     version: '0.0.1',
     schema: Schema,
 
-    async up(db, migrate) {
-        await db.create('Status', {})
+    async up(db, migrate, params) {
+        if (!params.dry) {
+            await db.create('Status', {})
+        }
     },
 
-    async down(db, migrate) {
-        await db.remove('Status', {})
+    async down(db, migrate, params) {
+        if (!params.dry) {
+            await db.remove('Status', {})
+        }
     }
 }
 ```
@@ -155,8 +147,11 @@ import {Migrate} from 'onetable-migrate'
 //  See above example for Migrate parameters
 const migrate = new Migrate(OneTableParams, {dir: '.'})
 
+//  Initialize the migration library. This reads the table primary keys.
+await migrate.init()
+
 //  Apply a specific migration where direction is -1 for downgrade, +1 for an upgrade and 0 for a reset
-let migration = await migrate.apply(direction, '0.0.1')
+let migration = await migrate.apply(direction, '0.0.1', {dry: false})
 
 //  Return a list of applied migrations
 let migrations = await migrate.findPastMigrations()
@@ -196,12 +191,14 @@ The migrations array contains an ordered set of migrations of the form:
     description: 'Migration Description',
     schema: Schema,
 
-    async up(db, migrate) {
+    async up(db, migrate, params) {
         //  Code to upgrade the database
     },
-    async down(db, migrate) {
+    async down(db, migrate, params) {
         //  Code to downgrade the database
-        await db.remove('Status', {})
+        if (!params.dry) {
+            await db.remove('Status', {})
+        }
     }
 }
 ```
@@ -219,6 +216,7 @@ The latest migration should remove all data from the database and then initializ
 When creating your `latest.js` migration, be very careful when removing all items from the database. We typically protect this with a test against the deployment profile to ensure you never do this on a production database.
 
 Sample latest.js migration
+
 ```javascript
 const migrate = new Migrate(OneTableParams, {
     migrations: [
@@ -226,20 +224,25 @@ const migrate = new Migrate(OneTableParams, {
             version: 'latest',
             description: 'Database reset to latest version',
             schema: Schema,
-            async up(db, migrate) {
-                if (migrate.params.profile == 'dev') {
-                    await removeAllItems(db)
+            async up(db, migrate, params) {
+                if (!params.dry) {
+                    if (migrate.params.profile == 'dev') {
+                        await removeAllItems(db)
+                    }
                 }
                 //  Provision required database data
             },
-            async down(db, migrate) {
-                if (migrate.params.profile == 'dev') {
-                    await removeAllItems(db)
+            async down(db, migrate, params) {
+                if (!params.dry) {
+                    if (migrate.params.profile == 'dev') {
+                        await removeAllItems(db)
+                    }
                 }
-            },
+            }
         }
     ]
 })
+await migrate.init()
 
 async function removeAllItems(db) {
     do {
@@ -253,11 +256,13 @@ async function removeAllItems(db) {
 
 ### Migrate Methods
 
-#### async apply(direction, version)
+#### async apply(direction, version, params)
 
 Apply or revert a migration. The `direction` parameter specifies the direction, where, -1 means downgrade, 0 means reset and then upgrade, and 1 means upgrade.
 
 The `version` is the destination version. All intermediate migrations will be applied or reverted to reach the destination.
+
+The `params` are provided to the up/down functions. The `params.dry` will be true to indicate it should be a dry-run and not perform any descructive updates to the table.
 
 #### async findPastMigrations()
 
@@ -277,7 +282,7 @@ Returns a list of migrations that have not yet been applied.
 
 ### async init()
 
-Initialize the migration library. This reads the table keys.
+Initialize the migration library. This reads the table keys. This MUST be called after constructing the Migrate instance.
 
 ### Deployment
 
@@ -289,6 +294,8 @@ You use deploy this library two ways:
 ### Local Migrations
 
 With local migrations, you keep your migration scripts locally on a development system and manage using the [OneTable CLI](https://www.npmjs.com/package/onetable-cli). The OneTable CLI includes this migration library internally and can manage migrations using AWS credentials.
+
+The migration scripts must be JavaScript. TypeScript is not yet supported for local scripts. When using remote migrations, you can use TypeScript.
 
 In this mode, DynamoDB I/O is performed from within the OneTable CLI process. This means I/O travels to and from the system hosting the OneTable CLI process. This works well for local development databases and smaller remote databases.
 
@@ -318,15 +325,15 @@ const Migrations = [
         version: '0.0.1',
         description: 'Initialize the database',
         schema: Schema_001,
-        async up(db, migrate) { /* code */ },
-        async down(db, migrate) { /* code */ }
+        async up(db, migrate, params) { /* code */ },
+        async down(db, migrate, params) { /* code */ }
     },
     {
         version: 'latest',
         description: 'Initialize the database',
         schema: Schema_002,
-        async up(db, migrate) { /* code */ },
-        async down(db, migrate) { /* code */ }
+        async up(db, migrate, params) { /* code */ },
+        async down(db, migrate, params) { /* code */ }
     },
 
 ]
@@ -338,12 +345,14 @@ exports.handler = async (event, context) => {
 
     config.client = client
     let migrate = new Migrate(config, {migrations: Migrations})
+    await migrate.init()
+
     let data
 
     switch (action) {
     case 'apply':
-        let {direction, version} = args
-        data = await migrate.apply(direction, version)
+        let {direction, version, params} = args
+        data = await migrate.apply(direction, version, params)
         break
     case 'getCurrentVersion':
         data = await migrate.getCurrentVersion()
@@ -380,7 +389,7 @@ You will need to install this controller with the following lambda permissions:
 The OneTable CLI will issue the following commands and set `event.action` to the method name and `event.args` to any parameters. The `event.config` contains the migrate.json settings from the CLI.
 
 ```
-function apply(direction: Number, version: String) : Migration {}
+function apply(direction: Number, version: String, params: {dry: boolean}) : Migration {}
 function getCurrentVersion() : String {}
 function findPastMigrations() {}
 function getOutstandingVersions(): String {}
@@ -406,4 +415,4 @@ You can contact me (Michael O'Brien) on Twitter at: [@SenseDeepCloud](https://tw
 
 ### SenseDeep
 
-Please try our Serverless trouble shooter [SenseDeep](https://www.sensedeep.com/).
+Please try our Serverless Developer Studio [SenseDeep](https://www.sensedeep.com/).
