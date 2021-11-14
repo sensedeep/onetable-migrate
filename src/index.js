@@ -21,6 +21,7 @@ export class Migrate {
     constructor(config = {}, params = {}) {
         this.params = params
         this.migrations = params.migrations
+        this.pastMigrations = null
         this.dir = Path.resolve(params.dir || '.')
         this.db = (typeof config.setClient != 'function') ? new Table(config) : config
     }
@@ -33,32 +34,36 @@ export class Migrate {
     }
 
     /* public */
-    async apply(direction, version) {
+    async apply(direction, version, params = {}) {
         let db = this.db
         let migration, model
 
-        console.log(`Apply migration ${version} direction ${direction}`)
+        console.log(`Apply migration ${version} direction ${direction}`, params)
 
         if (direction == 0) {
             migration = await this.loadMigration('latest')
             model = db.getModel(MigrationKey)
 
             //  Remove all existing migrations
-            await model.remove({}, {many: true})
+            if (!params.dry) {
+                await model.remove({}, {many: true})
+            }
 
             //  Create prior migration items (not last)
             let versions = await this.getVersions()
             version = versions.pop()
 
-            for (let v of versions) {
-                let migration = await this.loadMigration(v)
-                model = db.getModel(MigrationKey)
-                await model.create({
-                    date: new Date(),
-                    description: migration.description,
-                    path: migration.path,
-                    version: migration.version,
-                })
+            if (!params.dry) {
+                for (let v of versions) {
+                    let migration = await this.loadMigration(v)
+                    model = db.getModel(MigrationKey)
+                    await model.create({
+                        date: new Date(),
+                        description: migration.description,
+                        path: migration.path,
+                        version: migration.version,
+                    })
+                }
             }
         }
         if (!migration) {
@@ -67,37 +72,44 @@ export class Migrate {
         }
 
         if (direction < 0) {
-            await migration.down(db, this)
+            await migration.down(db, this, params)
 
-            await model.remove({version: migration.version})
-
-            let current = await this.loadMigration(await this.getCurrentVersion())
-            await db.saveSchema(current.schema)
+            if (!params.dry) {
+                await model.remove({version: migration.version})
+                let current = await this.loadMigration(await this.getCurrentVersion())
+                await db.saveSchema(current.schema)
+            }
 
         } else {
             //  Up, repeat or reset
-            await migration.up(db, this)
-            db.saveSchema(migration.schema)
+            await migration.up(db, this, params)
 
-            let params = {
-                version,
-                date: new Date(),
-                path: migration.path,
-                description: migration.description,
-            }
-            if (direction <= 1) {
-                await model.create(params)
-            } else {
-                await model.update(params)
+            if (!params.dry) {
+                db.saveSchema(migration.schema)
+                let properties = {
+                    version,
+                    date: new Date(),
+                    path: migration.path,
+                    description: migration.description,
+                }
+                if (direction <= 1) {
+                    await model.create(properties)
+                } else {
+                    await model.update(properties)
+                }
             }
         }
     }
 
     /* public */
     async findPastMigrations() {
+        if (this.pastMigrations) {
+            return this.pastMigrations
+        }
         let model = await this.db.getModel(MigrationKey)
         let pastMigrations = await model.find({})
         this.sortMigrations(pastMigrations)
+        this.pastMigrations = pastMigrations
         return pastMigrations
     }
 
