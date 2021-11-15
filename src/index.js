@@ -19,6 +19,7 @@ export class Migrate {
         The `params.migrations` set to the in-memory migrations or `params.dir` to a migrations directory.
      */
     constructor(config = {}, params = {}) {
+        this.config = config
         this.params = params
         this.migrations = params.migrations
         this.pastMigrations = null
@@ -99,6 +100,7 @@ export class Migrate {
                 }
             }
         }
+        return migration
     }
 
     /* public */
