@@ -39,7 +39,7 @@ export class Migrate {
         let db = this.db
         let migration, model
 
-        console.log(`Apply migration ${version} direction ${direction}`, params)
+        console.log(`Apply migration ${version} direction ${direction}`)
 
         if (direction == 0) {
             migration = await this.loadMigration('latest')
