@@ -1,6 +1,6 @@
 {
     "name": "onetable-migrate",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "description": "DynamoDB OneTable Migration Library",
     "main": "dist/cjs/index.js",
     "module": "dist/mjs/index.js",
