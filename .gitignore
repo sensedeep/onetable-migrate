@@ -1,3 +1,5 @@
 node_modules
 onetable
 dist
+.DS_Store
+.tags*

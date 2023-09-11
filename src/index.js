@@ -5,12 +5,12 @@
 import Fs from 'fs'
 import Path from 'path'
 import Semver from 'semver'
-import { Model, Table } from 'dynamodb-onetable'
 
-// DEV
-// import { Model, Table } from '../../onetable/dist/mjs/index.js'
+import { Model, Table } from "dynamodb-onetable";
+// import {Table} from '../../onetable/dist/mjs/index.js'
 
 const MigrationKey = '_Migration'
+var Migration
 
 export class Migrate {
     /*
@@ -21,10 +21,20 @@ export class Migrate {
     constructor(config = {}, params = {}) {
         this.config = config
         this.params = params
-        this.migrations = params.migrations
-        this.pastMigrations = null
-        this.dir = Path.resolve(params.dir || '.')
-        this.db = (typeof config.setClient != 'function') ? new Table(config) : config
+        this.helpers = params.helpers
+        if (params.dir) {
+            this.dir = Path.resolve(params.dir || '.')
+        } else {
+            this.migrations = params.migrations
+        }
+        /*
+            If config is a OneTable instance, use it. Determine this by a 'setClient' method
+         */
+        this.log = params.log || {
+            info: (...args) => console.log(args),
+            error: (...args) => console.error(args),
+        }
+        this.db = typeof config.setClient != 'function' ? new Table(config) : config
     }
 
     /*
@@ -32,96 +42,138 @@ export class Migrate {
     */
     async init() {
         await this.db.setSchema()
+        Migration = await this.db.getModel(MigrationKey)
     }
 
-    /* public */
-    async apply(direction, version, params = {}) {
+    /*
+        action can be: down, reset, up, repeat, or any other name
+     */
+    async apply(action, version, options = {}) {
         let db = this.db
-        let migration, model
+        let versions = await this.getSemVersions()
+        let currentVersion = await this.getCurrentVersion()
 
-        console.log(`Apply migration ${version} direction ${direction}`)
+        this.log.info(`Run migration "${action}"`, {action, versions, version})
 
-        if (direction == 0) {
-            migration = await this.loadMigration('latest')
-            model = db.getModel(MigrationKey)
+        if (action == 'reset' || action === 0) {
+            await this.invokeMigration('up', 'reset', options)
 
-            //  Remove all existing migrations
-            if (!params.dry) {
-                await model.remove({}, {many: true})
-            }
+            if (!options.dry) {
+                //  Recreate all migration entries
+                await Migration.remove({}, {many: true})
 
-            //  Create prior migration items (not last)
-            let versions = await this.getVersions()
-            version = versions.pop()
-
-            if (!params.dry) {
                 for (let v of versions) {
                     let migration = await this.loadMigration(v)
-                    model = db.getModel(MigrationKey)
-                    await model.create({
+                    await Migration.create({
                         date: new Date(),
                         description: migration.description,
                         path: migration.path,
                         version: migration.version,
+                        status: 'success',
                     })
                 }
             }
-        }
-        if (!migration) {
-            migration = await this.loadMigration(version)
-            model = db.getModel(MigrationKey)
-        }
-
-        if (direction < 0) {
-            await migration.down(db, this, params)
-
-            if (!params.dry) {
-                await model.remove({version: migration.version})
-                let current = await this.loadMigration(await this.getCurrentVersion())
-                await db.saveSchema(current.schema)
+        } else if (action == 'up' || action === 1 || action == 'repeat' || action === 2) {
+            for (let v of versions) {
+                if (Semver.compare(v, currentVersion) < 0) {
+                    continue
+                }
+                if (Semver.compare(v, version) > 0) {
+                    break
+                }
+                await this.invokeMigration('up', v, options)
             }
+        } else if (action == 'down' || action === -1) {
+            let pastMigrations = await this.findPastMigrations()
 
+            for (let v of versions.reverse()) {
+                if (Semver.compare(v, currentVersion) > 0) {
+                    continue
+                }
+                if (Semver.compare(v, version) < 0) {
+                    break
+                }
+                await this.invokeMigration('down', v, options)
+
+                if (!options.dry) {
+                    let migration = pastMigrations.reverse().find((m) => m.version == v)
+                    if (migration) {
+                        await Migration.remove(migration)
+                    }
+                    currentVersion = await this.getCurrentVersion()
+                    let currentMigration = await this.loadMigration(currentVersion)
+                    if (currentMigration.schema) {
+                        await db.saveSchema(currentMigration.schema)
+                    }
+                }
+            }
         } else {
-            //  Up, repeat or reset
-            await migration.up(db, this, params)
-
-            if (!params.dry) {
-                db.saveSchema(migration.schema)
-                let properties = {
-                    version,
-                    date: new Date(),
-                    path: migration.path,
-                    description: migration.description,
-                }
-                if (direction <= 1) {
-                    await model.create(properties)
-                } else {
-                    await model.update(properties)
-                }
-            }
+            //  Named migration
+            await this.invokeMigration('up', action, options)
         }
-        return migration
+        return 'success'
+    }
+
+    async invokeMigration(action, v, options) {
+        let db = this.db
+        let migration
+        try {
+            if (v === 0) {
+                //  RESET DEPRECATE
+                migration = await this.loadMigration('latest')
+            } else {
+                migration = await this.loadMigration(v)
+            }
+            await this.db.setSchema(migration.schema)
+
+            this.log.info(`Invoke ${v}.${action}`, {options})
+            await migration[action](db, this, options)
+
+            if (!options.dry) {
+                await this.updateTable(migration, action, v, 'success')
+            }
+        } catch (err) {
+            if (migration && !options.dry) {
+                await this.updateTable(migration, action, v, err.message)
+            }
+            throw err
+        }
+    }
+
+    async updateTable(migration, action, v, status = null) {
+        let properties = {
+            version: v,
+            date: new Date(),
+            path: migration.path,
+            description: migration.description,
+            status,
+        }
+        if (action == 'up' || action === 1 || action == 'reset' || action === 0) {
+            await Migration.create(properties, {exists: null})
+        } else if (action == 'repeat' || action === 2) {
+            await Migration.update(properties, {exists: null})
+        }
+        if (migration.schema) {
+            await this.db.saveSchema(migration.schema)
+        }
     }
 
     /* public */
     async findPastMigrations() {
-        if (this.pastMigrations) {
-            return this.pastMigrations
-        }
-        let model = await this.db.getModel(MigrationKey)
-        let pastMigrations = await model.find({})
-        this.sortMigrations(pastMigrations)
-        this.pastMigrations = pastMigrations
-        return pastMigrations
+        return (await Migration.find({})).sort((a, b) => a.date - b.date)
     }
 
     /* public */
     async getCurrentVersion() {
-        let pastMigrations = await this.findPastMigrations()
-        if (pastMigrations.length == 0) {
+        let migrations = await this.findPastMigrations()
+        if (migrations.length == 0) {
             return '0.0.0'
         }
-        return pastMigrations[pastMigrations.length - 1].version
+        let versions = migrations
+            .map((m) => m.version)
+            .filter((v) => Semver.valid(v))
+            .sort(Semver.compare)
+        return versions.length ? versions[versions.length - 1] : '0.0.0'
     }
 
     /*
@@ -129,15 +181,9 @@ export class Migrate {
      */
     /* public */
     async getOutstandingVersions(limit = Number.MAX_SAFE_INTEGER) {
-        let current = await this.getCurrentVersion()
         let pastMigrations = await this.findPastMigrations()
-
-        let versions = await this.getVersions()
-        versions = versions.filter(version => {
-            return Semver.compare(version, current) > 0
-        }).sort(Semver.compare)
-
-        versions = versions.filter(v => pastMigrations.find(m => m.version == v) == null)
+        let versions = await this.getSemVersions()
+        versions = versions.filter((v) => pastMigrations.find((m) => m.version == v) == null)
         return versions.slice(0, limit)
     }
 
@@ -154,51 +200,71 @@ export class Migrate {
         return migrations
     }
 
+    /*
+        Return the list of available named migrations (non-semver)
+     */
+    /* public */
+    async getNamedMigrations(limit = Number.MAX_SAFE_INTEGER) {
+        return (await this.getNamedVersions()).slice(0, limit)
+    }
+
+    /* 
+        Get the list of migrations. This will return versioned and named migrations.
+    */
     /* private */
     async getVersions() {
         let versions
         if (this.migrations) {
-            versions = this.migrations.map(m => m.version)
+            versions = this.migrations.map((m) => m.version)
         } else {
-            versions = Fs.readdirSync(this.dir).map(file => file.replace(/\.[^/.]+$/, ''))
+            versions = Fs.readdirSync(this.dir).map((file) => file.replace(/\.[^/.]+$/, ''))
         }
-        return versions.filter(version => { return Semver.valid(version) }).sort(Semver.compare)
+        return versions
+    }
+
+    /* private */
+    async getSemVersions() {
+        return (await this.getVersions()).filter((version) => Semver.valid(version)).sort(Semver.compare)
+    }
+
+    /* private */
+    async getNamedVersions() {
+        return (await this.getVersions()).filter((version) => !Semver.valid(version))
     }
 
     /* private */
     /*
         Load a migration and set its schema. Return the migration (modified)
     */
-    async loadMigration(version) {
+    async loadMigration(name) {
         let path, migration
         if (this.migrations) {
-            migration = this.migrations.find(m => m.version == version)
+            migration = this.migrations.find((m) => m.version == name)
         } else {
-            path = `${this.dir}/${version}.js`
+            path = `${this.dir}/${name}.js`
             migration = (await import(path)).default
         }
         if (!migration) {
-            throw new Error(`Cannot find migration for version ${version}`)
+            throw new Error(`Cannot find migration "${name}"`)
         }
         if (!migration.schema) {
-            throw new Error(`Migration ${version} is missing a schema`)
+            throw new Error(`Migration "${name}" is missing a schema`)
         }
         if (!migration.version) {
-            throw new Error(`Migration ${version} is missing a version property`)
+            throw new Error(`Migration "${version}" is missing a version property`)
         }
-        await this.db.setSchema(migration.schema)
-
         return {
             description: migration.description,
             down: migration.down,
             path: path || 'memory',
             schema: migration.schema,
             up: migration.up,
-            version,
+            version: name,
         }
     }
 
-    /* private */
+    /* private 
+    //  UNUSED
     sortMigrations(array) {
         array.sort((a, b) => {
             let cmp = Semver.compare(a.version, b.version)
@@ -214,5 +280,5 @@ export class Migrate {
                 return 0
             }
         })
-    }
+    } */
 }
