@@ -54,16 +54,16 @@ export class Migrate {
         let currentVersion = await this.getCurrentVersion()
 
         this.log.info(`Run migration "${action}"`, {action, versions, version})
+        let migration
 
         if (action == 'reset' || action === 0) {
             await this.invokeMigration('up', 'reset', options)
-
             if (!options.dry) {
                 //  Recreate all migration entries
-                await Migration.remove({}, {many: true})
+                await Migration.remove({}, {many: true, hidden: true})
 
                 for (let v of versions) {
-                    let migration = await this.loadMigration(v)
+                    migration = await this.loadMigration(v)
                     await Migration.create({
                         date: new Date(),
                         description: migration.description,
@@ -73,18 +73,19 @@ export class Migrate {
                     })
                 }
             }
+
         } else if (action == 'up' || action === 1 || action == 'repeat' || action === 2) {
             for (let v of versions) {
-                if (Semver.compare(v, currentVersion) < 0) {
+                if (Semver.compare(v, currentVersion) <= 0) {
                     continue
                 }
                 if (Semver.compare(v, version) > 0) {
                     break
                 }
-                await this.invokeMigration('up', v, options)
+                migration = await this.invokeMigration('up', v, options)
             }
         } else if (action == 'down' || action === -1) {
-            let pastMigrations = await this.findPastMigrations()
+            let pastMigrations = await this.getPastMigrations()
 
             for (let v of versions.reverse()) {
                 if (Semver.compare(v, currentVersion) > 0) {
@@ -93,25 +94,25 @@ export class Migrate {
                 if (Semver.compare(v, version) < 0) {
                     break
                 }
-                await this.invokeMigration('down', v, options)
+                migration = await this.invokeMigration('down', v, options)
 
                 if (!options.dry) {
-                    let migration = pastMigrations.reverse().find((m) => m.version == v)
+                    migration = pastMigrations.reverse().find((m) => m.version == v)
                     if (migration) {
                         await Migration.remove(migration)
                     }
-                    currentVersion = await this.getCurrentVersion()
-                    let currentMigration = await this.loadMigration(currentVersion)
-                    if (currentMigration.schema) {
-                        await db.saveSchema(currentMigration.schema)
-                    }
+                }
+                migration = await this.getCurrentVersion()
+                migration = await this.loadMigration(currentVersion)
+                if (!options.dry && migration.schema) {
+                    await db.saveSchema(migration.schema)
                 }
             }
         } else {
             //  Named migration
-            await this.invokeMigration('up', action, options)
+            migration = await this.invokeMigration('up', action, options)
         }
-        return 'success'
+        return migration
     }
 
     async invokeMigration(action, v, options) {
@@ -125,13 +126,12 @@ export class Migrate {
                 migration = await this.loadMigration(v)
             }
             await this.db.setSchema(migration.schema)
-
-            this.log.info(`Invoke ${v}.${action}`, {options})
             await migration[action](db, this, options)
 
             if (!options.dry) {
                 await this.updateTable(migration, action, v, 'success')
             }
+            return migration
         } catch (err) {
             if (migration && !options.dry) {
                 await this.updateTable(migration, action, v, err.message)
@@ -159,36 +159,44 @@ export class Migrate {
     }
 
     /* public */
-    async findPastMigrations() {
+    //  Return all past migrations including named migrations
+    async getPastMigrations() {
         return (await Migration.find({})).sort((a, b) => a.date - b.date)
+    }
+
+    async getPastVersions() {
+        return (await Migration.find({})).map(m => m.version).filter(v => Semver.valid(v)).sort(Semver.compare)
+    }
+
+    //  DEPRECATE
+    async findPastMigrations() {
+        return await this.getPastMigrations()
     }
 
     /* public */
     async getCurrentVersion() {
-        let migrations = await this.findPastMigrations()
-        if (migrations.length == 0) {
+        let versions = await this.getPastVersions()
+        if (versions.length == 0) {
             return '0.0.0'
         }
-        let versions = migrations
-            .map((m) => m.version)
-            .filter((v) => Semver.valid(v))
-            .sort(Semver.compare)
-        return versions.length ? versions[versions.length - 1] : '0.0.0'
+        return versions.at(-1)
     }
 
     /*
         Return outstanding versions in semver sorted order up to the specified limit
+        Does not include named migration versions
      */
     /* public */
     async getOutstandingVersions(limit = Number.MAX_SAFE_INTEGER) {
-        let pastMigrations = await this.findPastMigrations()
+        let pastVersions = await this.getPastVersions()
         let versions = await this.getSemVersions()
-        versions = versions.filter((v) => pastMigrations.find((m) => m.version == v) == null)
+        versions = versions.filter((v) => pastVersions.find((p) => p == v) == null)
         return versions.slice(0, limit)
     }
 
     /*
         Return outstanding migrations in semver sorted order up to the specified limit
+        Does not include named migrations
      */
     /* public */
     async getOutstandingMigrations(limit = Number.MAX_SAFE_INTEGER) {
@@ -204,12 +212,13 @@ export class Migrate {
         Return the list of available named migrations (non-semver)
      */
     /* public */
-    async getNamedMigrations(limit = Number.MAX_SAFE_INTEGER) {
-        return (await this.getNamedVersions()).slice(0, limit)
+    async getNamedVersions(limit = Number.MAX_SAFE_INTEGER) {
+        return (await this.getVersions()).filter((version) => !Semver.valid(version)).slice(0, limit)
     }
 
     /* 
-        Get the list of migrations. This will return versioned and named migrations.
+        Get the full list of available (migration) versions. This will return the names of 
+        versioned and named migrations.
     */
     /* private */
     async getVersions() {
@@ -223,13 +232,9 @@ export class Migrate {
     }
 
     /* private */
+    //  Get the list of semantic versions available.
     async getSemVersions() {
         return (await this.getVersions()).filter((version) => Semver.valid(version)).sort(Semver.compare)
-    }
-
-    /* private */
-    async getNamedVersions() {
-        return (await this.getVersions()).filter((version) => !Semver.valid(version))
     }
 
     /* private */
@@ -262,23 +267,4 @@ export class Migrate {
             version: name,
         }
     }
-
-    /* private 
-    //  UNUSED
-    sortMigrations(array) {
-        array.sort((a, b) => {
-            let cmp = Semver.compare(a.version, b.version)
-            if (cmp < 0) {
-                return cmp
-            } else if (cmp > 0) {
-                return cmp
-            } else if (a.order < b.order) {
-                return -1
-            } else if (a.order > b.order) {
-                return 1
-            } else {
-                return 0
-            }
-        })
-    } */
 }

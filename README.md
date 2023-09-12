@@ -159,7 +159,7 @@ let migration = await migrate.apply("cleanup-orphans")
 let migration = await migrate.apply("reset")
 
 //  Return a list of applied migrations
-let migrations = await migrate.findPastMigrations()
+let migrations = await migrate.getPastMigrations()
 
 //  Get the last applied migration
 let version = await migrate.getCurrentVersion()
@@ -279,17 +279,13 @@ The `version` is the destination version for upgrdes and downgrades. All interme
 
 The `params` are provided to the up/down functions. The `params.dry` will be true to indicate it should be a dry-run and not perform any descructive updates to the table.
 
-#### async findPastMigrations()
-
-Returns a list of all migrations that have been applied (and not reverted). The result is a simple list of version numbers.
-
 #### async getCurrentVersion()
 
 Returns the current migration version. This is the last migration that was applied and has not been reverted.
 
-#### async getNamedMigrations()
+#### async getNamedVersions()
 
-Returns a list of available named migrations.
+Returns a list of available named migrations verions. This returns a simple list of named migrations name.
 
 #### async getOutstandingVersions()
 
@@ -298,6 +294,14 @@ Returns a list of versions that have not yet been applied.
 #### async getOutstandingMigrations()
 
 Returns a list of migrations that have not yet been applied.
+
+#### async getPastMigrations()
+
+Returns a list of all migrations that have been applied (and not reverted). The result is a list of migration objects.
+
+#### async getPastVersions()
+
+Returns a list of all SemVer migrations that have been applied (and not reverted). The result is a simple list of version strings.
 
 ### async init()
 
@@ -361,8 +365,8 @@ exports.handler = async (event, context) => {
         case 'getCurrentVersion':
             data = await migrate.getCurrentVersion()
             break
-        case 'findPastMigrations':
-            data = await migrate.findPastMigrations()
+        case 'getPastMigrations':
+            data = await migrate.getPastMigrations()
             break
         case 'getOutstandingVersions':
             data = await migrate.getOutstandingVersions()
@@ -370,8 +374,8 @@ exports.handler = async (event, context) => {
         case 'getOutstandingMigrations':
             data = await migrate.getOutstandingMigrations()
             break
-        case 'getNamedMigrations':
-            data = await migrate.getNamedMigrations()
+        case 'getNamedVersions':
+            data = await migrate.getNamedVersions()
             break
         default:
             throw new Error(`Unknown migration action ${action}`)
@@ -398,7 +402,7 @@ The OneTable CLI will issue the following commands and set `event.action` to the
 ```
 function apply(action: String, version: String, params: {dry: boolean}) : Migration {}
 function getCurrentVersion() : String {}
-function findPastMigrations() {}
+function getPastMigrations() {}
 function getOutstandingVersions(): String {}
 ```
 
