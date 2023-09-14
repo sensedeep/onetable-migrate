@@ -25,7 +25,7 @@ export class Migrate {
         if (params.dir) {
             this.dir = Path.resolve(params.dir || '.')
         } else {
-            this.migrations = params.migrations
+            this.migrations = params.migrations || []
         }
         /*
             If config is a OneTable instance, use it. Determine this by a 'setClient' method
