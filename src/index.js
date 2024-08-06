@@ -77,17 +77,25 @@ export class Migrate {
         } else if (action == 'up' || action === 1 || action == 'repeat' || action === 2) {
             let found
             for (let v of versions) {
-                if (Semver.compare(v, currentVersion) <= 0) {
+                let current = Semver.compare(v, currentVersion)
+                let target = Semver.compare(v, version)
+                if (current < 0) {
                     continue
+                } else if (current == 0) {
+                    found = true
+                    if (action != 'repeat' && action != 2) {
+                        continue
+                    }
                 }
-                if (Semver.compare(v, version) > 0) {
+                if (target == 0) {
+                    found = true
+                } else if (target > 0) {
                     break
                 }
-                found = Semver.compare(v, version) == 0
                 migration = await this.invokeMigration('up', v, options)
             }
-            if (!found) {
-                throw new Error(`Cannot find target migration ${version}`)
+            if (!found || !migration) {
+                throw new Error(`Cannot find target up migration ${version}`)
             }
 
         } else if (action == 'down' || action === -1) {
@@ -95,13 +103,19 @@ export class Migrate {
 
             let found
             for (let v of versions.reverse()) {
-                if (Semver.compare(v, currentVersion) > 0) {
+                let current = Semver.compare(v, version)
+                let target = Semver.compare(v, version)
+                if (current > 0) {
+                    continue
+                } else if (current == 0) {
+                    found = true
                     continue
                 }
-                if (Semver.compare(v, version) < 0) {
+                if (target == 0) {
+                    found = true
+                } else if (target < 0) {
                     break
                 }
-                found = Semver.compare(v, version) == 0
                 migration = await this.invokeMigration('down', v, options)
 
                 if (!options.dry) {
@@ -116,7 +130,7 @@ export class Migrate {
                     await db.saveSchema(migration.schema)
                 }
             }
-            if (!found) {
+            if (!found || !migration) {
                 throw new Error(`Cannot find target migration ${version}`)
             }
         } else {
