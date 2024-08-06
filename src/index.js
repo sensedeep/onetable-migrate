@@ -75,6 +75,7 @@ export class Migrate {
             }
 
         } else if (action == 'up' || action === 1 || action == 'repeat' || action === 2) {
+            let found
             for (let v of versions) {
                 if (Semver.compare(v, currentVersion) <= 0) {
                     continue
@@ -82,11 +83,17 @@ export class Migrate {
                 if (Semver.compare(v, version) > 0) {
                     break
                 }
+                found = Semver.compare(v, version) == 0
                 migration = await this.invokeMigration('up', v, options)
             }
+            if (!found) {
+                throw new Error('Cannot find target migration ${version}')
+            }
+
         } else if (action == 'down' || action === -1) {
             let pastMigrations = await this.getPastMigrations()
 
+            let found
             for (let v of versions.reverse()) {
                 if (Semver.compare(v, currentVersion) > 0) {
                     continue
@@ -94,6 +101,7 @@ export class Migrate {
                 if (Semver.compare(v, version) < 0) {
                     break
                 }
+                found = Semver.compare(v, version) == 0
                 migration = await this.invokeMigration('down', v, options)
 
                 if (!options.dry) {
@@ -107,6 +115,9 @@ export class Migrate {
                 if (!options.dry && migration.schema) {
                     await db.saveSchema(migration.schema)
                 }
+            }
+            if (!found) {
+                throw new Error('Cannot find target migration ${version}')
             }
         } else {
             //  Named migration
