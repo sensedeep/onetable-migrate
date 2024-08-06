@@ -87,7 +87,7 @@ export class Migrate {
                 migration = await this.invokeMigration('up', v, options)
             }
             if (!found) {
-                throw new Error('Cannot find target migration ${version}')
+                throw new Error(`Cannot find target migration ${version}`)
             }
 
         } else if (action == 'down' || action === -1) {
@@ -117,7 +117,7 @@ export class Migrate {
                 }
             }
             if (!found) {
-                throw new Error('Cannot find target migration ${version}')
+                throw new Error(`Cannot find target migration ${version}`)
             }
         } else {
             //  Named migration
