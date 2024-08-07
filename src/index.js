@@ -80,57 +80,64 @@ export class Migrate {
                 let current = Semver.compare(v, currentVersion)
                 let target = Semver.compare(v, version)
                 if (current < 0) {
+                    //  This version is before the current version
                     continue
                 } else if (current == 0) {
+                    //  This version IS the current version
                     found = true
                     if (action != 'repeat' && action != 2) {
+                        //  Not repeating, so skip
                         continue
                     }
                 }
                 if (target == 0) {
+                    //  This version is the target version
                     found = true
                 } else if (target > 0) {
+                    //  This version is greater than the target - done
                     break
                 }
                 migration = await this.invokeMigration('up', v, options)
             }
-            if (!found || !migration) {
+            if (!found) {
                 throw new Error(`Cannot find target up migration ${version}`)
             }
 
         } else if (action == 'down' || action === -1) {
             let pastMigrations = await this.getPastMigrations()
-
             let found
             for (let v of versions.reverse()) {
-                let current = Semver.compare(v, version)
+                let current = Semver.compare(v, currentVersion)
                 let target = Semver.compare(v, version)
                 if (current > 0) {
+                    //  This version is after the current version
                     continue
                 } else if (current == 0) {
+                    //  This version IS the current version - downgrading this version
                     found = true
-                    continue
                 }
                 if (target == 0) {
+                    //  This version is the target version
                     found = true
                 } else if (target < 0) {
+                    //  This version before the target version -- done
                     break
                 }
                 migration = await this.invokeMigration('down', v, options)
 
                 if (!options.dry) {
-                    migration = pastMigrations.reverse().find((m) => m.version == v)
-                    if (migration) {
+                    let migrations = pastMigrations.reverse().filter((m) => m.version == v)
+                    for (let migration of migrations) {
                         await Migration.remove(migration)
                     }
                 }
-                migration = await this.getCurrentVersion()
+                currentVersion = await this.getCurrentVersion()
                 migration = await this.loadMigration(currentVersion)
                 if (!options.dry && migration.schema) {
                     await db.saveSchema(migration.schema)
                 }
             }
-            if (!found || !migration) {
+            if (!found) {
                 throw new Error(`Cannot find target migration ${version}`)
             }
         } else {
