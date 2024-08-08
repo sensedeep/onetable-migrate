@@ -1,6 +1,6 @@
 {
     "name": "onetable-migrate",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "description": "DynamoDB OneTable Migration Library",
     "main": "dist/cjs/index.js",
     "module": "dist/mjs/index.js",
@@ -37,13 +37,13 @@
     },
     "homepage": "https://github.com/sensedeep/onetable-migrate",
     "dependencies": {
-        "dynamodb-onetable": "^2.7.3",
-        "semver": "^7.6.2"
+        "dynamodb-onetable": "^2.7.5",
+        "semver": "^7.6.3"
     },
     "devDependencies": {
-        "@types/node": "^20.14.5",
-        "eslint": "^9.5.0",
-        "typescript": "^5.4.5"
+        "@types/node": "^22.1.0",
+        "eslint": "^9.8.0",
+        "typescript": "^5.5.4"
     },
     "files": [
         "dist/"
