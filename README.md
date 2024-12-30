@@ -36,7 +36,6 @@ Use the [SenseDeep DynamoDB Developer Studio](https://www.sensedeep.com) which p
 -   Control by the SenseDeep DynamoDB Developer Studio GUI.
 -   No module dependencies other than OneTable.
 -   Supported by [SenseDeep](https://www.sensedeep.com/) for graphical migrations control.
--   Works with AWS SDK v2 and v3
 
 ## Installation
 
@@ -53,20 +52,14 @@ import {Table} from 'dynamodb-onetable'
 import {Migrate} from 'onetable-migrate'
 ```
 
-or
+Initialize the Migrate instance with a OneTable Table instance.
 
 ```javascript
-const {Table} = require('dynamodb-onetable')
-const {Migrate} = require('onetable-migrate')
-```
+import {DynamoDBClient} from '@aws-sdk/client-dynamodb'
+const client = new DynamoDBClient({...})
 
-Initialize the Migrate instance with a OneTable Table instance using the AWS SDK v2 DocumentClient.
-
-For initialization using the AWS SDK v3, see the [OneTable Documentation](https://www.npmjs.com/package/dynamodb-onetable).
-
-```javascript
 const OneTableParams = {
-    client: new DynamoDBClient(),
+    client: client,
     name: 'MyTable',
 })
 const migrate = new Migrate(OneTableParams, params)
