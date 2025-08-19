@@ -3,3 +3,4 @@ onetable
 dist
 .DS_Store
 .tags*
+.promoted

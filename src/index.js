@@ -21,7 +21,6 @@ export class Migrate {
     constructor(config = {}, params = {}) {
         this.config = config
         this.params = params
-        this.helpers = params.helpers
         if (params.dir) {
             this.dir = Path.resolve(params.dir || '.')
         } else {
@@ -158,6 +157,7 @@ export class Migrate {
                 migration = await this.loadMigration(v)
             }
             await this.db.setSchema(migration.schema)
+            this.helpers = this.params.helpers
             await migration[action](db, this, options)
 
             if (!options.dry) {
